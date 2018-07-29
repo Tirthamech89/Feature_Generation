@@ -4,7 +4,7 @@ library(caret)
 library(caTools)
 library(mice)
 
-#After Missing Value Imputation
+#After Missing Value Imputation and train-test split
 chk<-train_new
 str(chk)
 glimpse(chk)
