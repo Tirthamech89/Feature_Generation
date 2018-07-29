@@ -1,0 +1,55 @@
+library(deepnet)
+library(woeBinning)
+library(caret)
+library(caTools)
+library(mice)
+
+#After Missing Value Imputation
+chk<-train_new
+str(chk)
+glimpse(chk)
+y_train<-as.factor(chk$renewal) #target Variable
+
+#Numeric variables transformed as woe variables
+binning<-woe.tree.binning(chk,'renewal',c('perc_premium_paid_by_cash_credit','age_in_days','Income','Count_3.6_months_late','Count_6.12_months_late','Count_more_than_12_months_late','application_underwriting_score','no_of_premiums_paid','premium'))
+chk<-woe.binning.deploy(chk,binning,add.woe.or.dum.var = 'woe')
+chk1<-subset(chk,select=c(renewal,sourcing_channel,residence_area_type,perc_premium_paid_by_cash_credit.binned,Count_3.6_months_late.binned,Count_6.12_months_late.binned,application_underwriting_score.binned,Count_more_than_12_months_late.binned,age_in_days.binned,no_of_premiums_paid.binned,Income.binned,premium.binned))
+glimpse(chk1)
+
+x_train<-chk1[-1]#Without target variable
+
+#Creating Dummy Variable
+dmy<-dummyVars("~.",data=x_train,fullRank=T)
+train_transformed<-data.frame(predict(dmy,newdata = x_train))
+x_train2<-train_transformed
+
+#RBM feature generated
+rbm1<-rbm.train(x=as.matrix(x_train2),hidden=80,numepochs = 30, cd=5)
+train_new_rbm<-as.data.frame(rbm.up(rbm1,as.matrix(x_train2)))
+
+#Model Built up
+model_lm<-train(train_new_rbm,y_train,method='glm')
+predicted_y<-predict.train(model_lm,train_new_rbm,type="prob")
+#confusionMatrix(predicted_y,y_train)
+pt<-as.data.frame(predicted_y)
+names(pt)[2] <- "pred"
+all_chk<-cbind(pt,y_train)
+AUC(all_chk$pred,all_chk$y_train)
+
+#Scoring up on Test Data
+chk_test<-test_new
+chk_test<-woe.binning.deploy(chk_test,binning,add.woe.or.dum.var = 'woe')
+chk1_test<-subset(chk_test,select=c(renewal,sourcing_channel,residence_area_type,perc_premium_paid_by_cash_credit.binned,Count_3.6_months_late.binned,Count_6.12_months_late.binned,application_underwriting_score.binned,Count_more_than_12_months_late.binned,age_in_days.binned,no_of_premiums_paid.binned,Income.binned,premium.binned))
+glimpse(chk1_test)
+y_test<-as.factor(chk_test$renewal)
+
+x_test<-chk1_test[-1]
+dmy<-dummyVars("~.",data=x_test,fullRank=T)
+test_transformed<-data.frame(predict(dmy,newdata = x_test))
+x_test2<-test_transformed
+test_new_rbm<-as.data.frame(rbm.up(rbm1,as.matrix(x_test2)))
+predicted_y_test<-predict.train(model_lm,test_new_rbm,type="prob")
+pt_test<-as.data.frame(predicted_y_test)
+names(pt_test)[2] <- "pred"
+all_chk_test<-cbind(pt_test,y_test)
+AUC(all_chk_test$pred,all_chk_test$y_test)
